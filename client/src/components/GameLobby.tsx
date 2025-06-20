@@ -1,12 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Users, Play, ArrowLeft, UserPlus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Copy, Users, Play, ArrowLeft, UserPlus, Plus, Hash } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface GameLobbyProps {
   onStartGame: (gameInfo: any) => void;
@@ -16,180 +18,421 @@ interface GameLobbyProps {
 
 const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser }) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('create');
+  const [currentGame, setCurrentGame] = useState<any>(null);
+  const [joinCode, setJoinCode] = useState('');
+  
   const [gameSettings, setGameSettings] = useState({
-    courseName: 'Pebble Beach Golf Links',
-    gameCode: 'GOLF' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+    courseName: '',
+    coursePar: 72,
     maxPlayers: 4
   });
 
-  const [players, setPlayers] = useState([
-    {
-      id: currentUser?.id || '1',
-      name: currentUser?.name || 'You',
-      handicap: currentUser?.handicap || 18,
-      isHost: true
+  // Create game mutation
+  const createGameMutation = useMutation({
+    mutationFn: (gameData: any) =>
+      apiRequest('/api/games', {
+        method: 'POST',
+        body: JSON.stringify({
+          hostId: currentUser.id,
+          ...gameData
+        }),
+      }),
+    onSuccess: (game) => {
+      setCurrentGame(game);
+      setActiveTab('lobby');
+      toast({
+        title: "Game created!",
+        description: `Game code: ${game.gameCode}`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create game",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Join game mutation
+  const joinGameMutation = useMutation({
+    mutationFn: (gameCode: string) =>
+      apiRequest(`/api/games/${gameCode}/join`, {
+        method: 'POST',
+        body: JSON.stringify({ playerId: currentUser.id }),
+      }),
+    onSuccess: (response) => {
+      setCurrentGame(response.game);
+      setActiveTab('lobby');
+      toast({
+        title: "Joined game!",
+        description: `Welcome to ${response.game.courseName}`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to join game",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Get game info for joining
+  const { data: joinGameInfo, isLoading: loadingJoinInfo } = useQuery({
+    queryKey: [`/api/games/${joinCode}/join`],
+    enabled: joinCode.length === 6,
+  });
+
+  // Get current game players
+  const { data: gameData, refetch: refetchGame } = useQuery({
+    queryKey: [`/api/games/${currentGame?.id}`],
+    enabled: !!currentGame?.id,
+    refetchInterval: 2000, // Poll every 2 seconds for real-time updates
+  });
+
+  // Start game mutation
+  const startGameMutation = useMutation({
+    mutationFn: (gameId: number) =>
+      apiRequest(`/api/games/${gameId}/start`, {
+        method: 'POST',
+        body: JSON.stringify({ hostId: currentUser.id }),
+      }),
+    onSuccess: () => {
+      toast({
+        title: "Game started!",
+        description: "Good luck on the course!",
+      });
+      onStartGame({
+        ...currentGame,
+        players: gameData?.players || []
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to start game",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateGame = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gameSettings.courseName) {
+      toast({
+        title: "Missing information",
+        description: "Please enter a course name",
+        variant: "destructive",
+      });
+      return;
     }
-  ]);
+    createGameMutation.mutate(gameSettings);
+  };
 
-  // Simulate players joining
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setPlayers(prev => [
-        ...prev,
-        {
-          id: '2',
-          name: 'Mike Johnson',
-          handicap: 12,
-          isHost: false
-        },
-        {
-          id: '3',
-          name: 'Sarah Wilson',
-          handicap: 8,
-          isHost: false
-        }
-      ]);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const copyGameCode = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/join/${gameSettings.gameCode}`);
-    toast({
-      title: "Game link copied!",
-      description: "Share this link with other players to invite them.",
-    });
+  const handleJoinGame = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinCode || joinCode.length !== 6) {
+      toast({
+        title: "Invalid game code",
+        description: "Please enter a 6-character game code",
+        variant: "destructive",
+      });
+      return;
+    }
+    joinGameMutation.mutate(joinCode.toUpperCase());
   };
 
   const handleStartGame = () => {
-    const courseData = {
-      name: gameSettings.courseName,
-      holes: Array.from({ length: 18 }, (_, i) => ({
-        number: i + 1,
-        par: i % 3 === 0 ? 4 : i % 5 === 0 ? 5 : i % 7 === 0 ? 3 : 4
-      }))
-    };
-
-    onStartGame({
-      course: courseData,
-      players: players,
-      gameCode: gameSettings.gameCode
-    });
+    if (currentGame && gameData?.players?.length >= 2) {
+      startGameMutation.mutate(currentGame.id);
+    }
   };
+
+  const copyGameCode = () => {
+    if (currentGame?.gameCode) {
+      navigator.clipboard.writeText(currentGame.gameCode);
+      toast({
+        title: "Game code copied!",
+        description: "Share with friends to invite them",
+      });
+    }
+  };
+
+  const copyShareLink = () => {
+    if (currentGame?.gameCode) {
+      const shareUrl = `${window.location.origin}?join=${currentGame.gameCode}`;
+      navigator.clipboard.writeText(shareUrl);
+      toast({
+        title: "Share link copied!",
+        description: "Send to friends so they can join quickly",
+      });
+    }
+  };
+
+  // Check for join code in URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinParam = urlParams.get('join');
+    if (joinParam && joinParam.length === 6) {
+      setJoinCode(joinParam.toUpperCase());
+      setActiveTab('join');
+    }
+  }, []);
+
+  if (currentGame && activeTab === 'lobby') {
+    const players = gameData?.players || [];
+    const isHost = currentGame.hostId === currentUser.id;
+    const canStart = isHost && players.length >= 2;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <Button
+              variant="outline"
+              onClick={onBack}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Menu
+            </Button>
+            <Badge variant="secondary" className="text-lg px-4 py-2">
+              {currentGame.status === 'waiting' ? 'Waiting for Players' : 'In Progress'}
+            </Badge>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Game Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-green-800">
+                  <Play className="w-6 h-6" />
+                  {currentGame.courseName}
+                </CardTitle>
+                <CardDescription>
+                  Course Par: {currentGame.coursePar} | Max Players: {currentGame.maxPlayers}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+                  <div>
+                    <p className="text-sm text-gray-600">Game Code</p>
+                    <p className="text-2xl font-bold text-green-800">{currentGame.gameCode}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={copyGameCode}
+                    className="flex items-center gap-2"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy
+                  </Button>
+                </div>
+                
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={copyShareLink}
+                >
+                  Copy Share Link
+                </Button>
+
+                {isHost && (
+                  <Button
+                    onClick={handleStartGame}
+                    disabled={!canStart || startGameMutation.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    {startGameMutation.isPending 
+                      ? 'Starting Game...' 
+                      : canStart 
+                        ? 'Start Game' 
+                        : `Need ${2 - players.length} more player${2 - players.length !== 1 ? 's' : ''}`
+                    }
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Players List */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-6 h-6" />
+                  Players ({players.length}/{currentGame.maxPlayers})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {players.map((player: any) => (
+                    <div
+                      key={player.playerId}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium">{player.player.name}</p>
+                        <p className="text-sm text-gray-600">
+                          Handicap: {player.player.handicap || 0}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {player.playerId === currentGame.hostId && (
+                          <Badge variant="outline">Host</Badge>
+                        )}
+                        {player.playerId === currentUser.id && (
+                          <Badge>You</Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {players.length < currentGame.maxPlayers && (
+                    <div className="flex items-center justify-center p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500">
+                      <UserPlus className="w-5 h-5 mr-2" />
+                      Waiting for players...
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button 
-            variant="outline" 
-            size="sm"
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <Button
+            variant="outline"
             onClick={onBack}
-            className="border-green-600 text-green-600 hover:bg-green-50"
+            className="flex items-center gap-2"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
+            <ArrowLeft className="w-4 h-4" />
+            Back to Menu
           </Button>
-          <h1 className="text-3xl font-bold text-green-800">Game Lobby</h1>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Game Settings */}
-          <Card className="border-green-200">
-            <CardHeader>
-              <CardTitle className="text-green-800">Game Settings</CardTitle>
-              <CardDescription>Configure your round details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="course-name">Course Name</Label>
-                <Input
-                  id="course-name"
-                  value={gameSettings.courseName}
-                  onChange={(e) => setGameSettings(prev => ({ ...prev, courseName: e.target.value }))}
-                />
-              </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-center text-green-800">Game Setup</CardTitle>
+            <CardDescription className="text-center">
+              Create a new game or join an existing one
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="create" className="flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  Create Game
+                </TabsTrigger>
+                <TabsTrigger value="join" className="flex items-center gap-2">
+                  <Hash className="w-4 h-4" />
+                  Join Game
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="space-y-2">
-                <Label>Game Code</Label>
-                <div className="flex gap-2">
-                  <Input value={gameSettings.gameCode} readOnly className="bg-gray-50" />
-                  <Button onClick={copyGameCode} size="sm" variant="outline">
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-sm text-green-600">Share this code for others to join</p>
-              </div>
+              <TabsContent value="create" className="mt-6">
+                <form onSubmit={handleCreateGame} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="courseName">Course Name</Label>
+                    <Input
+                      id="courseName"
+                      placeholder="e.g., Pebble Beach Golf Links"
+                      value={gameSettings.courseName}
+                      onChange={(e) => setGameSettings(prev => ({ 
+                        ...prev, 
+                        courseName: e.target.value 
+                      }))}
+                      required
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="max-players">Max Players</Label>
-                <Input
-                  id="max-players"
-                  type="number"
-                  min="2"
-                  max="8"
-                  value={gameSettings.maxPlayers}
-                  onChange={(e) => setGameSettings(prev => ({ ...prev, maxPlayers: parseInt(e.target.value) }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="coursePar">Course Par</Label>
+                      <Input
+                        id="coursePar"
+                        type="number"
+                        min="60"
+                        max="80"
+                        value={gameSettings.coursePar}
+                        onChange={(e) => setGameSettings(prev => ({ 
+                          ...prev, 
+                          coursePar: parseInt(e.target.value) 
+                        }))}
+                      />
+                    </div>
 
-          {/* Players */}
-          <Card className="border-green-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-green-800">
-                <Users className="w-5 h-5" />
-                Players ({players.length}/{gameSettings.maxPlayers})
-              </CardTitle>
-              <CardDescription>Waiting for players to join...</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {players.map((player) => (
-                  <div key={player.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-green-800">{player.name}</span>
-                        {player.isHost && (
-                          <Badge variant="secondary" className="bg-green-600 text-white">Host</Badge>
-                        )}
-                      </div>
-                      <span className="text-sm text-green-600">Handicap: {player.handicap}</span>
+                    <div className="space-y-2">
+                      <Label htmlFor="maxPlayers">Max Players</Label>
+                      <Input
+                        id="maxPlayers"
+                        type="number"
+                        min="2"
+                        max="8"
+                        value={gameSettings.maxPlayers}
+                        onChange={(e) => setGameSettings(prev => ({ 
+                          ...prev, 
+                          maxPlayers: parseInt(e.target.value) 
+                        }))}
+                      />
                     </div>
                   </div>
-                ))}
 
-                {players.length < gameSettings.maxPlayers && (
-                  <div className="p-3 border-2 border-dashed border-green-300 rounded-lg text-center">
-                    <UserPlus className="w-6 h-6 text-green-400 mx-auto mb-2" />
-                    <p className="text-green-600 text-sm">Waiting for more players...</p>
+                  <Button
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={createGameMutation.isPending}
+                  >
+                    {createGameMutation.isPending ? 'Creating Game...' : 'Create Game'}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="join" className="mt-6">
+                <form onSubmit={handleJoinGame} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gameCode">6-Character Game Code</Label>
+                    <Input
+                      id="gameCode"
+                      placeholder="Enter game code (e.g., ABC123)"
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                      maxLength={6}
+                      className="text-center text-lg tracking-wider"
+                    />
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Start Game */}
-        <Card className="mt-6 border-green-200">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Button 
-                onClick={handleStartGame}
-                size="lg"
-                className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 text-lg"
-                disabled={players.length < 2}
-              >
-                <Play className="w-5 h-5 mr-2" />
-                Start Game
-              </Button>
-              {players.length < 2 && (
-                <p className="text-sm text-green-600 mt-2">Need at least 2 players to start</p>
-              )}
-            </div>
+                  {joinGameInfo && (
+                    <Card className="bg-green-50">
+                      <CardContent className="pt-4">
+                        <h4 className="font-medium text-green-800">{joinGameInfo.game.courseName}</h4>
+                        <p className="text-sm text-green-600">
+                          Players: {joinGameInfo.playerCount}/{joinGameInfo.game.maxPlayers} | 
+                          Par: {joinGameInfo.game.coursePar}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={joinGameMutation.isPending || loadingJoinInfo}
+                  >
+                    {joinGameMutation.isPending ? 'Joining Game...' : 'Join Game'}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>

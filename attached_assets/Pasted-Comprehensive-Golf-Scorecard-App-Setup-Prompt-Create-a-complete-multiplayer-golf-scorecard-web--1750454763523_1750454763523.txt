@@ -1,0 +1,55 @@
+Comprehensive Golf Scorecard App Setup Prompt:
+
+"Create a complete multiplayer golf scorecard web application with the following features:
+
+Database Setup:
+
+Set up Supabase with tables for profiles, games, game_players, and scorecards
+Implement Row Level Security policies for all tables
+Create a function to generate unique 6-character game codes
+Set up automatic profile creation when users sign up
+Authentication System:
+
+Full authentication with email/password signup and login
+User profiles with name, email, and handicap fields
+Protected routes that require authentication
+Sign out functionality
+Game Management:
+
+Create Game form where hosts can set course name, max players (2-8), and course par
+Automatically generate unique game codes when games are created
+Join Game form where players can enter a 6-character game code to join existing games
+Support for joining games via shareable links (e.g., ?join=ABC123)
+Game Lobby:
+
+Show game details (course name, game code, max players, course par)
+Display all joined players with their names and handicaps
+Host can copy game code and shareable link to invite others
+Only host can start the game when at least 2 players have joined
+Real-time updates when new players join
+Live Scorecard:
+
+18-hole scorecard with par information
+Players can only edit their own scores
+Automatic calculation of OUT (front 9), IN (back 9), TOTAL, and NET scores
+Live leaderboard showing rankings based on net scores
+Real-time updates as players enter scores
+Game History:
+
+View completed games with course names, dates, and final results
+Show whether user was host or player for each game
+UI/UX Requirements:
+
+Clean, modern design using Tailwind CSS and shadcn/ui components
+Responsive design that works on mobile and desktop
+Green color scheme throughout the app
+Toast notifications for success/error messages
+Proper loading states and error handling
+Technical Requirements:
+
+TypeScript for type safety
+React with hooks for state management
+Supabase for backend (database, auth, real-time updates)
+Proper error handling and user feedback
+Real-time functionality for multiplayer features
+Make sure all functionality works end-to-end: user signup → create/join game → game lobby → live scoring → game completion → history viewing."

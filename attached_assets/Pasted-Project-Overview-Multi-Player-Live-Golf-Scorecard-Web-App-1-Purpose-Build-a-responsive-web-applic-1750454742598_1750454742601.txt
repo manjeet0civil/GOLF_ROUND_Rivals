@@ -1,0 +1,145 @@
+Project Overview: Multi‑Player Live Golf Scorecard Web App
+
+1. Purpose
+Build a responsive web application that allows golfers to create, join, and play live, multi‑player rounds of golf. Each round is tracked hole‑by‑hole, with automatic score calculations, handicaps, net scores, and final rankings. Players must authenticate before participating, and hosts can invite others via a unique join link.
+
+2. Core User Flows
+2.1. Authentication
+Register (email + password) or Login
+
+Passwords securely hashed (e.g. bcrypt)
+
+Session maintained via JWT or secure cookies
+
+2.2. Game Creation (Host)
+Click “New Game”
+
+Select or enter Course Details (18 holes, par values)
+
+Set Game Options:
+
+Max players (optional)
+
+Game name
+
+App generates a unique join link (e.g. yourapp.com/join/XYZ123)
+
+Host can view lobby of joined players and start the game when ready
+
+2.3. Joining a Game (Player)
+Authenticate (if not already logged in)
+
+Visit the join link
+
+See host name, course info, current player list
+
+Click “Join” to enter the lobby
+
+2.4. Live Score Entry
+Once the host clicks “Start Game”, the Scorecard UI appears for all players
+
+Real‑Time Updates via WebSockets (e.g. Socket.IO)
+
+Each player sees a table:
+
+Player	H1	H2	H3	…	H18	OUT	IN	Total	Handicap	Net
+Par	4	3	5	…	4	36	36	72	—	—
+Player A	5	4	6	…	3	41	33	74	12	62
+Player B	4	3	5	…	4	36	38	74	10	64
+
+Editable stroke inputs per hole
+
+Automatic calculations for:
+
+OUT (sum H1–H9)
+
+IN (sum H10–H18)
+
+Total = OUT + IN
+
+Net Score = Total − Handicap
+
+2.5. Ending the Game & Leaderboard
+Host clicks “End Game”
+
+Inputs locked for all players
+
+Server computes ranks sorted by Net Score (lowest first)
+
+Display final leaderboard table with medal icons 🥇🥈🥉
+
+Option to download or share final scorecard (PDF/CSV link)
+
+3. Data Model (High Level)
+3.1. User
+id (UUID)
+
+name
+
+email
+
+passwordHash
+
+handicap (number)
+
+avatarUrl (optional)
+
+3.2. Course
+id
+
+name
+
+holes: Array of 18 objects { number: 1–18, par: 3|4|5 }
+
+3.3. Game Session
+id
+
+hostUserId
+
+courseId
+
+joinCode (random string)
+
+status: pending | in_progress | finished
+
+players: Array of { userId, handicapAtStart, joinedAt }
+
+3.4. Scorecard Entry
+gameId
+
+userId
+
+strokes: Array of 18 integers
+
+Computed fields (on save or end): out, in, total, netScore
+
+4. Key Features & Functionality
+Secure Authentication
+
+Game Lobby & Invite Links
+
+Real‑Time Score Sync (all players see updates instantly)
+
+Automated Score Calculations (OUT, IN, Total, Net)
+
+Handicap Support (subtract from Total)
+
+Live Leaderboard during play (optional view)
+
+End‑Game Rankings with medal display
+
+Course Management (create custom courses)
+
+History & Records (list past games per user)
+
+Export & Share final results (PDF, CSV, or social link)
+
+5. Suggested Technology Stack
+Layer	Technology
+Frontend	React.js + Tailwind CSS
+Real‑Time	Socket.IO
+Backend Framework	Node.js + Express.js
+Database	MongoDB Atlas or PostgreSQL
+Authentication	JWT + bcrypt (or Firebase Auth)
+Storage	AWS S3 (avatars, exports)
+Deployment	Vercel (frontend), Render/Railway

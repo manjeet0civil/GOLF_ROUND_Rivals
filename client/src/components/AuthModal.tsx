@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -6,7 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, Mail, Lock, User } from 'lucide-react';
+import { Trophy, Mail, Lock, User, Hash } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,34 +17,98 @@ interface AuthModalProps {
 }
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuth }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
+  const { toast } = useToast();
+  const [loginData, setLoginData] = useState({
+    username: '',
+    password: ''
+  });
+  const [registerData, setRegisterData] = useState({
+    username: '',
     email: '',
+    name: '',
     password: '',
     handicap: ''
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
+  const loginMutation = useMutation({
+    mutationFn: (data: { username: string; password: string }) =>
+      apiRequest('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (response) => {
+      toast({
+        title: "Welcome back!",
+        description: "Successfully logged in.",
+      });
+      onAuth(response.user);
+      onClose();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Login failed",
+        description: error.message || "Invalid credentials",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: (data: {
+      username: string;
+      email: string;
+      name: string;
+      password: string;
+      handicap: number;
+    }) =>
+      apiRequest('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (response) => {
+      toast({
+        title: "Account created!",
+        description: "Welcome to GolfScore Live!",
+      });
+      onAuth(response.user);
+      onClose();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Registration failed",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginData.username || !loginData.password) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+    loginMutation.mutate(loginData);
   };
 
-  const handleSubmit = async (type: 'login' | 'register') => {
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      const user = {
-        id: Date.now().toString(),
-        name: formData.name || formData.email.split('@')[0],
-        email: formData.email,
-        handicap: parseInt(formData.handicap) || 18
-      };
-      onAuth(user);
-      setIsLoading(false);
-    }, 1000);
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registerData.username || !registerData.email || !registerData.name || !registerData.password) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+    registerMutation.mutate({
+      ...registerData,
+      handicap: parseInt(registerData.handicap) || 0,
+    });
   };
 
   return (
@@ -72,42 +138,44 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuth }) => {
                   Enter your credentials to access your account
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login-email" className="flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
-                    Email
-                  </Label>
-                  <Input
-                    id="login-email"
-                    name="email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="login-password" className="flex items-center gap-2">
-                    <Lock className="w-4 h-4" />
-                    Password
-                  </Label>
-                  <Input
-                    id="login-password"
-                    name="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <Button 
-                  onClick={() => handleSubmit('login')}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Signing In...' : 'Sign In'}
-                </Button>
+              <CardContent>
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-username" className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Username
+                    </Label>
+                    <Input
+                      id="login-username"
+                      name="username"
+                      type="text"
+                      placeholder="Enter your username"
+                      value={loginData.username}
+                      onChange={(e) => setLoginData(prev => ({ ...prev, username: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password" className="flex items-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      Password
+                    </Label>
+                    <Input
+                      id="login-password"
+                      name="password"
+                      type="password"
+                      placeholder="Enter your password"
+                      value={loginData.password}
+                      onChange={(e) => setLoginData(prev => ({ ...prev, password: e.target.value }))}
+                    />
+                  </div>
+                  <Button 
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={loginMutation.isPending}
+                  >
+                    {loginMutation.isPending ? 'Signing In...' : 'Sign In'}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>
@@ -120,70 +188,88 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuth }) => {
                   Join the community and start tracking your golf scores
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="register-name" className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Full Name
-                  </Label>
-                  <Input
-                    id="register-name"
-                    name="name"
-                    type="text"
-                    placeholder="Enter your full name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-email" className="flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
-                    Email
-                  </Label>
-                  <Input
-                    id="register-email"
-                    name="email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-password" className="flex items-center gap-2">
-                    <Lock className="w-4 h-4" />
-                    Password
-                  </Label>
-                  <Input
-                    id="register-password"
-                    name="password"
-                    type="password"
-                    placeholder="Create a password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-handicap" className="flex items-center gap-2">
-                    <Trophy className="w-4 h-4" />
-                    Handicap
-                  </Label>
-                  <Input
-                    id="register-handicap"
-                    name="handicap"
-                    type="number"
-                    placeholder="Enter your handicap (0-36)"
-                    value={formData.handicap}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <Button 
-                  onClick={() => handleSubmit('register')}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Creating Account...' : 'Create Account'}
-                </Button>
+              <CardContent>
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="register-username" className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Username
+                    </Label>
+                    <Input
+                      id="register-username"
+                      name="username"
+                      type="text"
+                      placeholder="Choose a username"
+                      value={registerData.username}
+                      onChange={(e) => setRegisterData(prev => ({ ...prev, username: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-name" className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Full Name
+                    </Label>
+                    <Input
+                      id="register-name"
+                      name="name"
+                      type="text"
+                      placeholder="Enter your full name"
+                      value={registerData.name}
+                      onChange={(e) => setRegisterData(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-email" className="flex items-center gap-2">
+                      <Mail className="w-4 h-4" />
+                      Email
+                    </Label>
+                    <Input
+                      id="register-email"
+                      name="email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={registerData.email}
+                      onChange={(e) => setRegisterData(prev => ({ ...prev, email: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-password" className="flex items-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      Password
+                    </Label>
+                    <Input
+                      id="register-password"
+                      name="password"
+                      type="password"
+                      placeholder="Create a password"
+                      value={registerData.password}
+                      onChange={(e) => setRegisterData(prev => ({ ...prev, password: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-handicap" className="flex items-center gap-2">
+                      <Hash className="w-4 h-4" />
+                      Handicap (Optional)
+                    </Label>
+                    <Input
+                      id="register-handicap"
+                      name="handicap"
+                      type="number"
+                      min="0"
+                      max="36"
+                      placeholder="Enter your handicap (0-36)"
+                      value={registerData.handicap}
+                      onChange={(e) => setRegisterData(prev => ({ ...prev, handicap: e.target.value }))}
+                    />
+                  </div>
+                  <Button 
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={registerMutation.isPending}
+                  >
+                    {registerMutation.isPending ? 'Creating Account...' : 'Create Account'}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>
