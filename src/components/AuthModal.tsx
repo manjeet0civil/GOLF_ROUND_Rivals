@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Golf, Mail, Lock, User } from 'lucide-react';
+import { Trophy, Mail, Lock, User } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -50,7 +50,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuth }) => {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-green-800">
-            <Golf className="w-6 h-6" />
+            <Trophy className="w-6 h-6" />
             Welcome to GolfScore Live
           </DialogTitle>
           <DialogDescription>
@@ -165,7 +165,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuth }) => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="register-handicap" className="flex items-center gap-2">
-                    <Golf className="w-4 h-4" />
+                    <Trophy className="w-4 h-4" />
                     Handicap
                   </Label>
                   <Input
