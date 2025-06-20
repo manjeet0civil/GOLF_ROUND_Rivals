@@ -2,12 +2,13 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Trophy, Users, Play, Plus } from 'lucide-react';
+import { Trophy, Users, Play, Plus, History } from 'lucide-react';
 import AuthModal from '@/components/AuthModal';
 import GameLobby from '@/components/GameLobby';
 import LiveScorecard from '@/components/LiveScorecard';
+import GameHistory from '@/components/GameHistory';
 
-type GameState = 'menu' | 'lobby' | 'playing' | 'finished';
+type GameState = 'menu' | 'lobby' | 'playing' | 'finished' | 'history';
 
 const Index = () => {
   const [gameState, setGameState] = useState<GameState>('menu');
@@ -39,6 +40,14 @@ const Index = () => {
     setGameState('lobby');
   };
 
+  const handleViewHistory = () => {
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
+    setGameState('history');
+  };
+
   const handleStartGame = (gameInfo: any) => {
     setGameData(gameInfo);
     setGameState('playing');
@@ -50,6 +59,8 @@ const Index = () => {
         return <GameLobby onStartGame={handleStartGame} onBack={() => setGameState('menu')} currentUser={currentUser} />;
       case 'playing':
         return <LiveScorecard gameData={gameData} onEndGame={() => setGameState('finished')} currentUser={currentUser} />;
+      case 'history':
+        return <GameHistory currentUser={currentUser} onBack={() => setGameState('menu')} />;
       case 'finished':
         return (
           <div className="text-center py-12">
@@ -76,7 +87,7 @@ const Index = () => {
               </div>
 
               {/* Main Actions */}
-              <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 mb-12">
+              <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-8 mb-12">
                 <Card className="hover:shadow-lg transition-shadow duration-300 border-green-200">
                   <CardHeader className="text-center">
                     <Plus className="w-12 h-12 text-green-600 mx-auto mb-2" />
@@ -110,6 +121,25 @@ const Index = () => {
                       className="w-full border-green-600 text-green-600 hover:bg-green-50 py-3 text-lg"
                     >
                       Join Game
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-lg transition-shadow duration-300 border-green-200">
+                  <CardHeader className="text-center">
+                    <History className="w-12 h-12 text-green-600 mx-auto mb-2" />
+                    <CardTitle className="text-2xl text-green-800">Game History</CardTitle>
+                    <CardDescription className="text-green-600">
+                      View your past rounds and final leaderboards
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button 
+                      onClick={handleViewHistory}
+                      variant="outline" 
+                      className="w-full border-green-600 text-green-600 hover:bg-green-50 py-3 text-lg"
+                    >
+                      View History
                     </Button>
                   </CardContent>
                 </Card>
