@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Trophy, Users, Play, Plus, History } from 'lucide-react';
@@ -7,6 +7,7 @@ import AuthModal from '@/components/AuthModal';
 import GameLobby from '@/components/GameLobby';
 import LiveScorecard from '@/components/LiveScorecard';
 import GameHistory from '@/components/GameHistory';
+import { useQuery } from '@tanstack/react-query';
 
 type GameState = 'menu' | 'lobby' | 'playing' | 'finished' | 'history';
 
@@ -16,6 +17,22 @@ const Index = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [gameData, setGameData] = useState(null);
+  const [currentGameId, setCurrentGameId] = useState<number | null>(null);
+
+  // Monitor game status for automatic redirection when host starts game
+  const { data: activeGameData } = useQuery({
+    queryKey: [`/api/games/${currentGameId}`],
+    enabled: !!currentGameId && gameState === 'lobby',
+    refetchInterval: 2000, // Check every 2 seconds
+  });
+
+  // Auto-redirect to scorecard when game starts
+  useEffect(() => {
+    if (activeGameData?.game?.status === 'playing' && gameState === 'lobby') {
+      setGameData(activeGameData.game);
+      setGameState('playing');
+    }
+  }, [activeGameData, gameState]);
 
   const handleAuth = (user: any) => {
     setIsAuthenticated(true);
@@ -50,13 +67,18 @@ const Index = () => {
 
   const handleStartGame = (gameInfo: any) => {
     setGameData(gameInfo);
+    setCurrentGameId(gameInfo.id);
     setGameState('playing');
+  };
+
+  const handleGameJoined = (gameId: number) => {
+    setCurrentGameId(gameId);
   };
 
   const renderGameState = () => {
     switch (gameState) {
       case 'lobby':
-        return <GameLobby onStartGame={handleStartGame} onBack={() => setGameState('menu')} currentUser={currentUser} />;
+        return <GameLobby onStartGame={handleStartGame} onBack={() => setGameState('menu')} currentUser={currentUser} onGameJoined={handleGameJoined} />;
       case 'playing':
         return <LiveScorecard gameData={gameData} onEndGame={() => setGameState('finished')} currentUser={currentUser} />;
       case 'history':

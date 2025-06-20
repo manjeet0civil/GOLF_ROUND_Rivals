@@ -14,9 +14,10 @@ interface GameLobbyProps {
   onStartGame: (gameInfo: any) => void;
   onBack: () => void;
   currentUser: any;
+  onGameJoined?: (gameId: number) => void;
 }
 
-const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser }) => {
+const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser, onGameJoined }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('create');
@@ -42,6 +43,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser 
     onSuccess: (game) => {
       setCurrentGame(game);
       setActiveTab('lobby');
+      onGameJoined?.(game.id);
       toast({
         title: "Game created!",
         description: `Game code: ${game.gameCode}`,
@@ -66,6 +68,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser 
     onSuccess: (response) => {
       setCurrentGame(response.game);
       setActiveTab('lobby');
+      onGameJoined?.(response.game.id);
       toast({
         title: "Joined game!",
         description: `Welcome to ${response.game.courseName}`,

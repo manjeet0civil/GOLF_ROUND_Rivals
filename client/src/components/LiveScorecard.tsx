@@ -57,6 +57,29 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
     },
   });
 
+  // Complete game mutation
+  const completeGameMutation = useMutation({
+    mutationFn: () =>
+      apiRequest(`/api/games/${gameData.id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ playerId: currentUser.id }),
+      }),
+    onSuccess: () => {
+      toast({
+        title: "Game completed!",
+        description: "Results have been saved to your history",
+      });
+      onEndGame();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to complete game",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleScoreUpdate = (hole: number, strokes: number, par: number) => {
     updateScoreMutation.mutate({
       playerId: currentUser.id,
@@ -384,7 +407,7 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
               </CardContent>
             </Card>
 
-            {/* Game Stats */}
+            {/* Game Stats & Actions */}
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle>Game Progress</CardTitle>
@@ -405,6 +428,23 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
                       {calculateTotals(getPlayerScores(currentUser.id)).holesPlayed}/18
                     </span>
                   </div>
+                  
+                  {/* Complete Game Button (only for host) */}
+                  {gameData.hostId === currentUser.id && (
+                    <div className="pt-4 border-t">
+                      <Button
+                        onClick={() => completeGameMutation.mutate()}
+                        disabled={completeGameMutation.isPending}
+                        className="w-full bg-green-600 hover:bg-green-700"
+                        size="lg"
+                      >
+                        {completeGameMutation.isPending ? 'Completing Game...' : 'Complete Game & Save Results'}
+                      </Button>
+                      <p className="text-xs text-gray-500 mt-2 text-center">
+                        This will end the game for all players and save final results
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -93,7 +93,16 @@ This is a full-stack golf scorecard application built with React, Express.js, an
 - Public assets served from built frontend
 
 ## Changelog
-- June 20, 2025. Initial setup
+- June 20, 2025: Initial setup and successful migration from Lovable to Replit
+- June 20, 2025: Implemented comprehensive multiplayer golf scorecard application with:
+  - Full authentication system with user registration and login
+  - Real-time game creation and joining with 6-character game codes
+  - Live multiplayer scorecard with automatic redirection when host starts game
+  - 18-hole scoring system with handicap calculations
+  - Live leaderboard with real-time updates
+  - Game completion and result saving functionality
+  - Comprehensive game history tracking
+  - Responsive design optimized for mobile and desktop
 
 ## User Preferences
 

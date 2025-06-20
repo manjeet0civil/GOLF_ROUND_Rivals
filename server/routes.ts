@@ -237,6 +237,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Complete game
+  app.post("/api/games/:id/complete", async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const { playerId } = req.body;
+
+      const game = await storage.getGame(gameId);
+      if (!game) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+
+      if (game.hostId !== playerId) {
+        return res.status(403).json({ message: "Only the host can complete the game" });
+      }
+
+      await storage.updateGameStatus(gameId, "completed");
+
+      res.json({ message: "Game completed successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // User routes
   app.get("/api/users/:id/games", async (req, res) => {
     try {
