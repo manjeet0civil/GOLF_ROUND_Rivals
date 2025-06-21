@@ -52,7 +52,6 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
           { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${joinedGame.id}` },
           (payload) => {
             if (payload.new.status === 'in_progress') {
-              // Game started, redirect to live scoreboard
               onJoinGame(joinedGame.id);
             }
           }
@@ -70,6 +69,8 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
   const fetchPlayers = async () => {
     if (!joinedGame) return;
 
+    console.log('Fetching players for game:', joinedGame.id);
+
     const { data, error } = await supabase
       .from('game_players')
       .select('*')
@@ -81,6 +82,7 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
       return;
     }
 
+    console.log('Players fetched:', data);
     setPlayers(data || []);
   };
 
@@ -90,6 +92,8 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
 
     setIsJoining(true);
     try {
+      console.log('Looking for game with code:', gameCode.toUpperCase());
+
       // Find the game by code
       const { data: gameData, error: gameError } = await supabase
         .from('games')
@@ -99,19 +103,26 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
         .single();
 
       if (gameError || !gameData) {
+        console.error('Game error:', gameError);
         throw new Error('Game not found or already started');
       }
 
+      console.log('Found game:', gameData);
+
       // Check if user is already in this game
-      const { data: existingPlayer } = await supabase
+      const { data: existingPlayer, error: existingError } = await supabase
         .from('game_players')
         .select('*')
         .eq('game_id', gameData.id)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
+
+      if (existingError) {
+        console.error('Error checking existing player:', existingError);
+      }
 
       if (existingPlayer) {
-        // User is already in the game, just show the lobby
+        console.log('User already in game');
         setJoinedGame(gameData);
         toast({
           title: "Welcome back!",
@@ -141,8 +152,12 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
           is_host: false
         });
 
-      if (joinError) throw joinError;
+      if (joinError) {
+        console.error('Error joining game:', joinError);
+        throw joinError;
+      }
 
+      console.log('Successfully joined game');
       setJoinedGame(gameData);
       toast({
         title: "Successfully joined game!",
@@ -150,6 +165,7 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
       });
 
     } catch (error: any) {
+      console.error('Join game error:', error);
       toast({
         title: "Failed to join game",
         description: error.message,

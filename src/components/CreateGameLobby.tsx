@@ -27,7 +27,7 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
   const { toast } = useToast();
   const { user } = useAuth();
   const [gameSettings, setGameSettings] = useState({
-    courseName: '',
+    courseName: 'New Golf Course',
     maxPlayers: 4,
     numberOfHoles: 18
   });
@@ -56,12 +56,13 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
           { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
           (payload) => {
             if (payload.new.status === 'in_progress') {
-              // Game started, redirect to live scoreboard
               onStartGame(gameId);
             }
           }
         )
         .subscribe();
+
+      fetchPlayers();
 
       return () => {
         supabase.removeChannel(subscription);
@@ -85,10 +86,10 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
         .from('games')
         .insert({
           host_user_id: user.id,
-          course_name: 'New Golf Course',
+          course_name: gameSettings.courseName,
           game_code: newGameCode,
-          max_players: 4,
-          number_of_holes: 18,
+          max_players: gameSettings.maxPlayers,
+          number_of_holes: gameSettings.numberOfHoles,
           status: 'waiting'
         })
         .select()
@@ -111,8 +112,7 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
 
       setGameId(gameData.id);
       setGameCode(newGameCode);
-      setGameSettings(prev => ({ ...prev, courseName: gameData.course_name }));
-      fetchPlayers();
+      console.log('Game created successfully:', gameData.id, 'Code:', newGameCode);
 
     } catch (error: any) {
       console.error('Error creating game:', error);
@@ -129,6 +129,8 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
   const fetchPlayers = async () => {
     if (!gameId) return;
 
+    console.log('Fetching players for game:', gameId);
+
     const { data, error } = await supabase
       .from('game_players')
       .select('*')
@@ -140,6 +142,7 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
       return;
     }
 
+    console.log('Players fetched:', data);
     setPlayers(data || []);
   };
 
@@ -305,6 +308,9 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
                         <span className="font-medium text-green-800">{player.player_name}</span>
                         {player.is_host && (
                           <Badge variant="secondary" className="bg-green-600 text-white">Host</Badge>
+                        )}
+                        {player.user_id === user?.id && (
+                          <Badge variant="outline" className="text-xs">You</Badge>
                         )}
                       </div>
                       <span className="text-sm text-green-600">Handicap: {player.handicap}</span>
