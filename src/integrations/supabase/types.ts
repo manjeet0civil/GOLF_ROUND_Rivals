@@ -117,6 +117,83 @@ export type Database = {
         }
         Relationships: []
       }
+      game_players: {
+        Row: {
+          game_id: string
+          handicap: number | null
+          id: string
+          is_host: boolean | null
+          joined_at: string
+          player_name: string
+          user_id: string
+        }
+        Insert: {
+          game_id: string
+          handicap?: number | null
+          id?: string
+          is_host?: boolean | null
+          joined_at?: string
+          player_name: string
+          user_id: string
+        }
+        Update: {
+          game_id?: string
+          handicap?: number | null
+          id?: string
+          is_host?: boolean | null
+          joined_at?: string
+          player_name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_players_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          completed_at: string | null
+          course_name: string
+          created_at: string
+          game_code: string
+          host_user_id: string
+          id: string
+          max_players: number | null
+          number_of_holes: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          course_name: string
+          created_at?: string
+          game_code: string
+          host_user_id: string
+          id?: string
+          max_players?: number | null
+          number_of_holes?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          course_name?: string
+          created_at?: string
+          game_code?: string
+          host_user_id?: string
+          id?: string
+          max_players?: number | null
+          number_of_holes?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -141,12 +218,56 @@ export type Database = {
         }
         Relationships: []
       }
+      scores: {
+        Row: {
+          created_at: string
+          game_id: string
+          hole_number: number
+          id: string
+          par: number
+          strokes: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          game_id: string
+          hole_number: number
+          id?: string
+          par?: number
+          strokes?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          game_id?: string
+          hole_number?: number
+          id?: string
+          par?: number
+          strokes?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scores_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_game_code: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

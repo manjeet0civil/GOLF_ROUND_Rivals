@@ -1,74 +1,91 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Trophy, Users, Play, Plus, History } from 'lucide-react';
-import AuthModal from '@/components/AuthModal';
-import GameLobby from '@/components/GameLobby';
+import { Trophy, Users, Play, Plus, History, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+import CreateGameLobby from '@/components/CreateGameLobby';
+import JoinGameLobby from '@/components/JoinGameLobby';
 import LiveScorecard from '@/components/LiveScorecard';
 import GameHistory from '@/components/GameHistory';
 
-type GameState = 'menu' | 'lobby' | 'playing' | 'finished' | 'history';
+type GameState = 'menu' | 'create' | 'join' | 'playing' | 'finished' | 'history';
 
 const Index = () => {
   const [gameState, setGameState] = useState<GameState>('menu');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [gameData, setGameData] = useState(null);
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
+  const { user, loading, signOut } = useAuth();
+  const navigate = useNavigate();
 
-  const handleAuth = (user: any) => {
-    setIsAuthenticated(true);
-    setCurrentUser(user);
-    setShowAuthModal(false);
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/auth');
+    }
+  }, [user, loading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-green-800">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
   };
 
   const handleCreateGame = () => {
-    if (!isAuthenticated) {
-      setShowAuthModal(true);
-      return;
-    }
-    setGameState('lobby');
+    setGameState('create');
   };
 
   const handleJoinGame = () => {
-    if (!isAuthenticated) {
-      setShowAuthModal(true);
-      return;
-    }
-    // Simulate joining a game
-    setGameState('lobby');
+    setGameState('join');
   };
 
   const handleViewHistory = () => {
-    if (!isAuthenticated) {
-      setShowAuthModal(true);
-      return;
-    }
     setGameState('history');
   };
 
-  const handleStartGame = (gameInfo: any) => {
-    setGameData(gameInfo);
+  const handleStartGame = (gameId: string) => {
+    setCurrentGameId(gameId);
+    setGameState('playing');
+  };
+
+  const handleJoinExistingGame = (gameId: string) => {
+    setCurrentGameId(gameId);
     setGameState('playing');
   };
 
   const renderGameState = () => {
     switch (gameState) {
-      case 'lobby':
-        return <GameLobby onStartGame={handleStartGame} onBack={() => setGameState('menu')} currentUser={currentUser} />;
+      case 'create':
+        return <CreateGameLobby onStartGame={handleStartGame} onBack={() => setGameState('menu')} />;
+      case 'join':
+        return <JoinGameLobby onJoinGame={handleJoinExistingGame} onBack={() => setGameState('menu')} />;
       case 'playing':
-        return <LiveScorecard gameData={gameData} onEndGame={() => setGameState('finished')} currentUser={currentUser} />;
+        return <LiveScorecard gameId={currentGameId!} onEndGame={() => setGameState('finished')} />;
       case 'history':
-        return <GameHistory currentUser={currentUser} onBack={() => setGameState('menu')} />;
+        return <GameHistory onBack={() => setGameState('menu')} />;
       case 'finished':
         return (
-          <div className="text-center py-12">
-            <Trophy className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-green-800 mb-4">Game Complete!</h2>
-            <Button onClick={() => setGameState('menu')} className="bg-green-600 hover:bg-green-700">
-              Return to Menu
-            </Button>
+          <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
+            <div className="text-center py-12">
+              <Trophy className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+              <h2 className="text-3xl font-bold text-green-800 mb-4">Game Complete!</h2>
+              <Button onClick={() => setGameState('menu')} className="bg-green-600 hover:bg-green-700">
+                Return to Menu
+              </Button>
+            </div>
           </div>
         );
       default:
@@ -173,21 +190,19 @@ const Index = () => {
                 </div>
               </div>
 
-              {/* Auth Status */}
+              {/* User Info */}
               <div className="fixed top-4 right-4">
-                {isAuthenticated ? (
-                  <div className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
-                    Welcome back, {currentUser?.name || 'Player'}!
-                  </div>
-                ) : (
+                <div className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+                  <span>Welcome, {user?.user_metadata?.name || user?.email?.split('@')[0]}!</span>
                   <Button 
-                    onClick={() => setShowAuthModal(true)}
-                    variant="outline"
-                    className="border-green-600 text-green-600 hover:bg-green-50"
+                    onClick={handleSignOut}
+                    variant="ghost"
+                    size="sm"
+                    className="text-white hover:bg-green-700 p-1"
                   >
-                    Sign In
+                    <LogOut className="w-4 h-4" />
                   </Button>
-                )}
+                </div>
               </div>
             </div>
           </div>
@@ -195,16 +210,7 @@ const Index = () => {
     }
   };
 
-  return (
-    <>
-      {renderGameState()}
-      <AuthModal 
-        isOpen={showAuthModal} 
-        onClose={() => setShowAuthModal(false)} 
-        onAuth={handleAuth} 
-      />
-    </>
-  );
+  return renderGameState();
 };
 
 export default Index;

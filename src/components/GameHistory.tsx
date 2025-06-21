@@ -1,74 +1,143 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Crown, Calendar, Users, Flag, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trophy, Calendar, Users, Eye } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface GameHistoryProps {
-  currentUser: any;
   onBack: () => void;
 }
 
-const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
-  const [gameHistory, setGameHistory] = useState([]);
-  const [selectedGame, setSelectedGame] = useState(null);
+interface HistoryGame {
+  id: string;
+  course_name: string;
+  game_code: string;
+  status: string;
+  created_at: string;
+  completed_at: string;
+  player_count: number;
+  is_host: boolean;
+}
 
-  // Generate mock game history data
+interface GameDetails {
+  game: HistoryGame;
+  players: any[];
+  scores: any[];
+  leaderboard: any[];
+}
+
+const GameHistory: React.FC<GameHistoryProps> = ({ onBack }) => {
+  const { user } = useAuth();
+  const [games, setGames] = useState<HistoryGame[]>([]);
+  const [selectedGame, setSelectedGame] = useState<GameDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    const mockHistory = [
-      {
-        id: '1',
-        courseName: 'Augusta National',
-        gameCode: 'AUG123',
-        date: '2024-06-15',
-        status: 'completed',
-        playerCount: 4,
-        isHost: true,
-        finalLeaderboard: [
-          { id: currentUser?.id, name: currentUser?.name, total: 74, handicap: 12, netScore: 62, rank: 1 },
-          { id: '2', name: 'Tiger Woods', total: 70, handicap: 5, netScore: 65, rank: 2 },
-          { id: '3', name: 'Rory McIlroy', total: 72, handicap: 3, netScore: 69, rank: 3 },
-          { id: '4', name: 'Jordan Spieth', total: 76, handicap: 6, netScore: 70, rank: 4 }
-        ]
-      },
-      {
-        id: '2',
-        courseName: 'Pebble Beach',
-        gameCode: 'PEB456',
-        date: '2024-06-10',
-        status: 'completed',
-        playerCount: 3,
-        isHost: false,
-        finalLeaderboard: [
-          { id: '5', name: 'Phil Mickelson', total: 68, handicap: 4, netScore: 64, rank: 1 },
-          { id: currentUser?.id, name: currentUser?.name, total: 78, handicap: 12, netScore: 66, rank: 2 },
-          { id: '6', name: 'Dustin Johnson', total: 75, handicap: 2, netScore: 73, rank: 3 }
-        ]
-      },
-      {
-        id: '3',
-        courseName: 'St. Andrews',
-        gameCode: 'STA789',
-        date: '2024-06-05',
-        status: 'completed',
-        playerCount: 2,
-        isHost: true,
-        finalLeaderboard: [
-          { id: '7', name: 'Jon Rahm', total: 71, handicap: 1, netScore: 70, rank: 1 },
-          { id: currentUser?.id, name: currentUser?.name, total: 82, handicap: 12, netScore: 70, rank: 1 }
-        ]
-      }
-    ];
-    setGameHistory(mockHistory);
-  }, [currentUser]);
+    fetchGameHistory();
+  }, [user]);
 
-  const getRankIcon = (rank: number) => {
-    switch (rank) {
-      case 1: return <Crown className="w-5 h-5 text-yellow-500" />;
-      case 2: return <Medal className="w-5 h-5 text-gray-400" />;
-      case 3: return <Medal className="w-5 h-5 text-amber-600" />;
-      default: return <span className="w-5 h-5 flex items-center justify-center text-green-600 font-bold">{rank}</span>;
+  const fetchGameHistory = async () => {
+    if (!user) return;
+
+    try {
+      const { data: playerGames, error } = await supabase
+        .from('game_players')
+        .select(`
+          game_id,
+          is_host,
+          games!inner (
+            id,
+            course_name,
+            game_code,
+            status,
+            created_at,
+            completed_at
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Get player counts for each game
+      const gameIds = playerGames?.map(pg => pg.game_id) || [];
+      const { data: playerCounts } = await supabase
+        .from('game_players')
+        .select('game_id')
+        .in('game_id', gameIds);
+
+      const gameHistory = playerGames?.map(pg => ({
+        id: pg.games.id,
+        course_name: pg.games.course_name,
+        game_code: pg.games.game_code,
+        status: pg.games.status,
+        created_at: pg.games.created_at,
+        completed_at: pg.games.completed_at,
+        is_host: pg.is_host,
+        player_count: playerCounts?.filter(pc => pc.game_id === pg.game_id).length || 0
+      })) || [];
+
+      setGames(gameHistory);
+    } catch (error) {
+      console.error('Error fetching game history:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchGameDetails = async (gameId: string) => {
+    try {
+      // Fetch game details
+      const { data: game } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', gameId)
+        .single();
+
+      // Fetch players
+      const { data: players } = await supabase
+        .from('game_players')
+        .select('*')
+        .eq('game_id', gameId)
+        .order('joined_at', { ascending: true });
+
+      // Fetch scores
+      const { data: scores } = await supabase
+        .from('scores')
+        .select('*')
+        .eq('game_id', gameId)
+        .order('hole_number', { ascending: true });
+
+      // Calculate leaderboard
+      const leaderboard = players?.map(player => {
+        const playerScores = scores?.filter(s => s.user_id === player.user_id) || [];
+        const total = playerScores.reduce((sum, score) => sum + score.strokes, 0);
+        const netScore = total > 0 ? total - player.handicap : 0;
+        
+        return {
+          ...player,
+          total_strokes: total,
+          net_score: netScore,
+          holes_played: playerScores.length
+        };
+      }).sort((a, b) => {
+        if (a.net_score === 0 && b.net_score === 0) return 0;
+        if (a.net_score === 0) return 1;
+        if (b.net_score === 0) return -1;
+        return a.net_score - b.net_score;
+      }) || [];
+
+      setSelectedGame({
+        game: games.find(g => g.id === game?.id)!,
+        players: players || [],
+        scores: scores || [],
+        leaderboard
+      });
+    } catch (error) {
+      console.error('Error fetching game details:', error);
     }
   };
 
@@ -76,26 +145,49 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
+
+  const getRankIcon = (rank: number) => {
+    switch (rank) {
+      case 1: return <Trophy className="w-5 h-5 text-yellow-500" />;
+      case 2: return <div className="w-5 h-5 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs font-bold">2</div>;
+      case 3: return <div className="w-5 h-5 bg-amber-600 rounded-full flex items-center justify-center text-white text-xs font-bold">3</div>;
+      default: return <div className="w-5 h-5 bg-green-600 rounded-full flex items-center justify-center text-white text-xs font-bold">{rank}</div>;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-green-800">Loading game history...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (selectedGame) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-4 mb-6">
-            <Button
-              variant="outline"
+            <Button 
+              variant="outline" 
+              size="sm"
               onClick={() => setSelectedGame(null)}
-              className="border-green-600 text-green-600"
+              className="border-green-600 text-green-600 hover:bg-green-50"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to History
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-green-800">{selectedGame.courseName}</h1>
-              <p className="text-green-600">Final Leaderboard - {formatDate(selectedGame.date)}</p>
+              <h1 className="text-3xl font-bold text-green-800">{selectedGame.game.course_name}</h1>
+              <p className="text-green-600">Final Leaderboard</p>
             </div>
           </div>
 
@@ -105,33 +197,37 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
                 <Trophy className="w-5 h-5" />
                 Final Results
               </CardTitle>
+              <CardDescription>
+                Game completed on {formatDate(selectedGame.game.completed_at)}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {selectedGame.finalLeaderboard.map((player, index) => (
+                {selectedGame.leaderboard.map((player, index) => (
                   <div key={player.id} className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-                    <div className="flex items-center gap-4">
-                      {getRankIcon(player.rank)}
+                    <div className="flex items-center gap-3">
+                      {getRankIcon(index + 1)}
                       <div>
-                        <span className="font-medium text-green-800">{player.name}</span>
-                        {player.id === currentUser?.id && (
-                          <Badge variant="secondary" className="ml-2 text-xs bg-blue-100 text-blue-800">You</Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-green-800">{player.player_name}</span>
+                          {player.is_host && (
+                            <Badge variant="secondary" className="bg-green-600 text-white text-xs">Host</Badge>
+                          )}
+                          {player.user_id === user?.id && (
+                            <Badge variant="outline" className="text-xs">You</Badge>
+                          )}
+                        </div>
+                        <span className="text-sm text-green-600">Handicap: {player.handicap}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-6 text-sm">
-                      <div className="text-center">
-                        <div className="text-green-600">Total</div>
-                        <div className="font-bold text-green-800">{player.total}</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-green-600">Handicap</div>
-                        <div className="font-medium text-green-700">{player.handicap}</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-green-600">Net Score</div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-green-600">
+                          Holes: {player.holes_played}/{selectedGame.game.number_of_holes || 18}
+                        </span>
+                        <span className="text-green-600">Total: {player.total_strokes || 0}</span>
                         <Badge variant="secondary" className="bg-green-600 text-white">
-                          {player.netScore}
+                          Net: {player.net_score || 0}
                         </Badge>
                       </div>
                     </div>
@@ -147,70 +243,74 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="outline"
+          <Button 
+            variant="outline" 
+            size="sm"
             onClick={onBack}
-            className="border-green-600 text-green-600"
+            className="border-green-600 text-green-600 hover:bg-green-50"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Menu
+            Back
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-green-800">Game History</h1>
-            <p className="text-green-600">View your past golf rounds and results</p>
-          </div>
+          <h1 className="text-3xl font-bold text-green-800">Game History</h1>
         </div>
 
-        {gameHistory.length === 0 ? (
+        {games.length === 0 ? (
           <Card className="border-green-200">
             <CardContent className="text-center py-12">
               <Trophy className="w-16 h-16 text-green-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-green-800 mb-2">No Games Yet</h3>
-              <p className="text-green-600">Start playing to see your game history here!</p>
+              <h3 className="text-xl font-medium text-green-800 mb-2">No Games Yet</h3>
+              <p className="text-green-600 mb-6">Start playing to see your game history here!</p>
+              <Button onClick={onBack} className="bg-green-600 hover:bg-green-700">
+                Create Your First Game
+              </Button>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4">
-            {gameHistory.map((game) => (
-              <Card key={game.id} className="border-green-200 hover:shadow-lg transition-shadow cursor-pointer">
+          <div className="space-y-4">
+            {games.map((game) => (
+              <Card key={game.id} className="border-green-200 hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-start gap-4">
-                      <Flag className="w-8 h-8 text-green-600 mt-1" />
-                      <div>
-                        <h3 className="text-xl font-semibold text-green-800">{game.courseName}</h3>
-                        <div className="flex items-center gap-4 mt-1 text-sm text-green-600">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {formatDate(game.date)}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            {game.playerCount} players
-                          </div>
-                          <Badge variant={game.isHost ? "default" : "secondary"} className="text-xs">
-                            {game.isHost ? "Host" : "Player"}
-                          </Badge>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-medium text-green-800">{game.course_name}</h3>
+                        <Badge 
+                          variant={game.status === 'completed' ? 'default' : 'secondary'}
+                          className={game.status === 'completed' ? 'bg-green-600 text-white' : ''}
+                        >
+                          {game.status === 'completed' ? 'Completed' : 
+                           game.status === 'in_progress' ? 'In Progress' : 'Waiting'}
+                        </Badge>
+                        {game.is_host && (
+                          <Badge variant="outline" className="text-xs">Host</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-green-600">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {formatDate(game.created_at)}
                         </div>
-                        <p className="text-xs text-green-500 mt-1">Game Code: {game.gameCode}</p>
+                        <div className="flex items-center gap-1">
+                          <Users className="w-4 h-4" />
+                          {game.player_count} players
+                        </div>
+                        <span>Code: {game.game_code}</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-2 mb-2">
-                        {getRankIcon(game.finalLeaderboard.find(p => p.id === currentUser?.id)?.rank || 1)}
-                        <span className="text-sm font-medium text-green-800">
-                          Your Finish: #{game.finalLeaderboard.find(p => p.id === currentUser?.id)?.rank}
-                        </span>
-                      </div>
+                    {game.status === 'completed' && (
                       <Button
-                        onClick={() => setSelectedGame(game)}
-                        className="bg-green-600 hover:bg-green-700"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchGameDetails(game.id)}
+                        className="border-green-600 text-green-600 hover:bg-green-50"
                       >
+                        <Eye className="w-4 h-4 mr-2" />
                         View Results
                       </Button>
-                    </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
