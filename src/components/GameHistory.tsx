@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +19,7 @@ interface HistoryGame {
   completed_at: string;
   player_count: number;
   is_host: boolean;
+  number_of_holes: number;
 }
 
 interface GameDetails {
@@ -54,7 +54,8 @@ const GameHistory: React.FC<GameHistoryProps> = ({ onBack }) => {
             game_code,
             status,
             created_at,
-            completed_at
+            completed_at,
+            number_of_holes
           )
         `)
         .eq('user_id', user.id)
@@ -77,7 +78,8 @@ const GameHistory: React.FC<GameHistoryProps> = ({ onBack }) => {
         created_at: pg.games.created_at,
         completed_at: pg.games.completed_at,
         is_host: pg.is_host,
-        player_count: playerCounts?.filter(pc => pc.game_id === pg.game_id).length || 0
+        player_count: playerCounts?.filter(pc => pc.game_id === pg.game_id).length || 0,
+        number_of_holes: pg.games.number_of_holes
       })) || [];
 
       setGames(gameHistory);
@@ -130,8 +132,13 @@ const GameHistory: React.FC<GameHistoryProps> = ({ onBack }) => {
         return a.net_score - b.net_score;
       }) || [];
 
+      const historyGame = games.find(g => g.id === game?.id);
+      if (historyGame && game) {
+        historyGame.number_of_holes = game.number_of_holes || 18;
+      }
+
       setSelectedGame({
-        game: games.find(g => g.id === game?.id)!,
+        game: historyGame!,
         players: players || [],
         scores: scores || [],
         leaderboard
