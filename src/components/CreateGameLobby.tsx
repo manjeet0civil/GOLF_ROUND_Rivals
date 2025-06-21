@@ -52,13 +52,22 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
             fetchPlayers();
           }
         )
+        .on('postgres_changes', 
+          { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
+          (payload) => {
+            if (payload.new.status === 'in_progress') {
+              // Game started, redirect to live scoreboard
+              onStartGame(gameId);
+            }
+          }
+        )
         .subscribe();
 
       return () => {
         supabase.removeChannel(subscription);
       };
     }
-  }, [gameId]);
+  }, [gameId, onStartGame]);
 
   const createGame = async () => {
     if (!user) return;
@@ -66,7 +75,9 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
     setIsCreating(true);
     try {
       // Generate game code using the database function
-      const { data: codeData } = await supabase.rpc('generate_game_code');
+      const { data: codeData, error: codeError } = await supabase.rpc('generate_game_code');
+      
+      if (codeError) throw codeError;
       const newGameCode = codeData;
 
       // Create the game
@@ -104,6 +115,7 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
       fetchPlayers();
 
     } catch (error: any) {
+      console.error('Error creating game:', error);
       toast({
         title: "Error creating game",
         description: error.message,
@@ -174,7 +186,7 @@ const CreateGameLobby: React.FC<CreateGameLobbyProps> = ({ onStartGame, onBack }
 
       if (error) throw error;
 
-      onStartGame(gameId);
+      // The real-time subscription will handle the redirect
     } catch (error: any) {
       toast({
         title: "Error starting game",

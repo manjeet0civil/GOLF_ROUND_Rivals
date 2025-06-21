@@ -268,6 +268,14 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      is_game_host: {
+        Args: { game_id: string; user_id: string }
+        Returns: boolean
+      }
+      is_game_participant: {
+        Args: { game_id: string; user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

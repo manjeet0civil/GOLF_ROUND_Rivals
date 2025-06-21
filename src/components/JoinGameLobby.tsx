@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Users } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Users, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,11 +15,74 @@ interface JoinGameLobbyProps {
   onBack: () => void;
 }
 
+interface Player {
+  id: string;
+  player_name: string;
+  handicap: number;
+  is_host: boolean;
+  user_id: string;
+}
+
+interface GameDetails {
+  id: string;
+  course_name: string;
+  max_players: number;
+  status: string;
+}
+
 const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const [gameCode, setGameCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [joinedGame, setJoinedGame] = useState<GameDetails | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+
+  useEffect(() => {
+    if (joinedGame) {
+      const subscription = supabase
+        .channel(`game-${joinedGame.id}`)
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'game_players', filter: `game_id=eq.${joinedGame.id}` },
+          () => {
+            fetchPlayers();
+          }
+        )
+        .on('postgres_changes', 
+          { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${joinedGame.id}` },
+          (payload) => {
+            if (payload.new.status === 'in_progress') {
+              // Game started, redirect to live scoreboard
+              onJoinGame(joinedGame.id);
+            }
+          }
+        )
+        .subscribe();
+
+      fetchPlayers();
+
+      return () => {
+        supabase.removeChannel(subscription);
+      };
+    }
+  }, [joinedGame, onJoinGame]);
+
+  const fetchPlayers = async () => {
+    if (!joinedGame) return;
+
+    const { data, error } = await supabase
+      .from('game_players')
+      .select('*')
+      .eq('game_id', joinedGame.id)
+      .order('joined_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching players:', error);
+      return;
+    }
+
+    setPlayers(data || []);
+  };
 
   const handleJoinGame = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,8 +111,12 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
         .single();
 
       if (existingPlayer) {
-        // User is already in the game, just join
-        onJoinGame(gameData.id);
+        // User is already in the game, just show the lobby
+        setJoinedGame(gameData);
+        toast({
+          title: "Welcome back!",
+          description: `You're already in ${gameData.course_name}`,
+        });
         return;
       }
 
@@ -75,12 +143,11 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
 
       if (joinError) throw joinError;
 
+      setJoinedGame(gameData);
       toast({
         title: "Successfully joined game!",
         description: `Welcome to ${gameData.course_name}`,
       });
-
-      onJoinGame(gameData.id);
 
     } catch (error: any) {
       toast({
@@ -92,6 +159,67 @@ const JoinGameLobby: React.FC<JoinGameLobbyProps> = ({ onJoinGame, onBack }) => 
       setIsJoining(false);
     }
   };
+
+  if (joinedGame) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-4 mb-6">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={onBack}
+              className="border-green-600 text-green-600 hover:bg-green-50"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-green-800">{joinedGame.course_name}</h1>
+              <p className="text-green-600">Waiting for host to start the game...</p>
+            </div>
+          </div>
+
+          <Card className="border-green-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-800">
+                <Users className="w-5 h-5" />
+                Players ({players.length}/{joinedGame.max_players})
+              </CardTitle>
+              <CardDescription>Game will start when the host is ready</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {players.map((player) => (
+                  <div key={player.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-green-800">{player.player_name}</span>
+                        {player.is_host && (
+                          <Badge variant="secondary" className="bg-green-600 text-white">Host</Badge>
+                        )}
+                        {player.user_id === user?.id && (
+                          <Badge variant="outline" className="text-xs">You</Badge>
+                        )}
+                      </div>
+                      <span className="text-sm text-green-600">Handicap: {player.handicap}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {players.length < joinedGame.max_players && (
+                  <div className="p-3 border-2 border-dashed border-green-300 rounded-lg text-center">
+                    <UserPlus className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                    <p className="text-green-600 text-sm">Waiting for more players...</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
