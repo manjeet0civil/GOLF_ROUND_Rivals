@@ -1,10 +1,15 @@
 import { supabase } from './supabase';
 
+// For Vercel deployment, use relative URLs since frontend and backend are on same domain
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 export const authenticatedFetch = async (url: string, options: RequestInit = {}) => {
   const { data: { session } } = await supabase.auth.getSession();
   
   console.log('🔍 API Request Debug:');
+  console.log('Base URL:', API_BASE_URL);
   console.log('URL:', url);
+  console.log('Full URL:', `${API_BASE_URL}${url}`);
   console.log('Session exists:', !!session);
   console.log('Access token exists:', !!session?.access_token);
   
@@ -22,7 +27,7 @@ export const authenticatedFetch = async (url: string, options: RequestInit = {})
 
   console.log('📤 Making request with headers:', headers);
 
-  const response = await fetch(url, {
+  const response = await fetch(`${API_BASE_URL}${url}`, {
     ...options,
     headers,
   });
