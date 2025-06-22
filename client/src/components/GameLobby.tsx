@@ -9,19 +9,44 @@ import { Copy, Users, Play, ArrowLeft, UserPlus, Plus, Hash } from 'lucide-react
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { User } from '@supabase/supabase-js';
 
 interface GameLobbyProps {
   onStartGame: (gameInfo: any) => void;
   onBack: () => void;
-  currentUser: any;
+  currentUser: User | null;
   onGameJoined?: (gameId: number) => void;
+}
+
+interface GameData {
+  id: number;
+  courseName: string;
+  coursePar: number;
+  maxPlayers: number;
+  gameCode: string;
+  status: string;
+  hostId: string;
+  players?: PlayerData[];
+}
+
+interface PlayerData {
+  playerId: string;
+  player: {
+    name: string;
+    handicap: number;
+  };
+}
+
+interface JoinGameInfo {
+  game: GameData;
+  playerCount: number;
 }
 
 const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser, onGameJoined }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('create');
-  const [currentGame, setCurrentGame] = useState<any>(null);
+  const [currentGame, setCurrentGame] = useState<GameData | null>(null);
   const [joinCode, setJoinCode] = useState('');
   
   const [gameSettings, setGameSettings] = useState({
@@ -32,27 +57,31 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
 
   // Create game mutation
   const createGameMutation = useMutation({
-    mutationFn: (gameData: any) =>
-      apiRequest('/api/games', {
+    mutationFn: (gameData: any) => {
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated');
+      }
+      return apiRequest('/api/games', {
         method: 'POST',
         body: JSON.stringify({
           hostId: currentUser.id,
           ...gameData
         }),
-      }),
-    onSuccess: (game) => {
+      });
+    },
+    onSuccess: (game: GameData) => {
       setCurrentGame(game);
       setActiveTab('lobby');
       onGameJoined?.(game.id);
       toast({
         title: "Game created!",
-        description: `Game code: ${game.gameCode}`,
+        description: `Game code: ${game.gameCode}. You need to join the game to start playing.`,
       });
     },
     onError: (error: any) => {
       toast({
         title: "Failed to create game",
-        description: error.message,
+        description: error.message || 'An error occurred while creating the game',
         variant: "destructive",
       });
     },
@@ -60,12 +89,16 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
 
   // Join game mutation
   const joinGameMutation = useMutation({
-    mutationFn: (gameCode: string) =>
-      apiRequest(`/api/games/${gameCode}/join`, {
+    mutationFn: (gameCode: string) => {
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated');
+      }
+      return apiRequest(`/api/games/${gameCode}/join`, {
         method: 'POST',
         body: JSON.stringify({ playerId: currentUser.id }),
-      }),
-    onSuccess: (response) => {
+      });
+    },
+    onSuccess: (response: { game: GameData; players: PlayerData[] }) => {
       setCurrentGame(response.game);
       setActiveTab('lobby');
       onGameJoined?.(response.game.id);
@@ -77,20 +110,20 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
     onError: (error: any) => {
       toast({
         title: "Failed to join game",
-        description: error.message,
+        description: error.message || 'An error occurred while joining the game',
         variant: "destructive",
       });
     },
   });
 
   // Get game info for joining
-  const { data: joinGameInfo, isLoading: loadingJoinInfo } = useQuery({
+  const { data: joinGameInfo, isLoading: loadingJoinInfo } = useQuery<JoinGameInfo>({
     queryKey: [`/api/games/${joinCode}/join`],
     enabled: joinCode.length === 6,
   });
 
   // Get current game players
-  const { data: gameData, refetch: refetchGame } = useQuery({
+  const { data: gameData, refetch: refetchGame } = useQuery<{ game: GameData; players: PlayerData[] }>({
     queryKey: [`/api/games/${currentGame?.id}`],
     enabled: !!currentGame?.id,
     refetchInterval: 2000, // Poll every 2 seconds for real-time updates
@@ -98,25 +131,31 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
 
   // Start game mutation
   const startGameMutation = useMutation({
-    mutationFn: (gameId: number) =>
-      apiRequest(`/api/games/${gameId}/start`, {
+    mutationFn: (gameId: number) => {
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated');
+      }
+      return apiRequest(`/api/games/${gameId}/start`, {
         method: 'POST',
         body: JSON.stringify({ hostId: currentUser.id }),
-      }),
+      });
+    },
     onSuccess: () => {
       toast({
         title: "Game started!",
         description: "Good luck on the course!",
       });
-      onStartGame({
-        ...currentGame,
-        players: gameData?.players || []
-      });
+      if (currentGame && gameData) {
+        onStartGame({
+          ...currentGame,
+          players: gameData.players || []
+        });
+      }
     },
     onError: (error: any) => {
       toast({
         title: "Failed to start game",
-        description: error.message,
+        description: error.message || 'An error occurred while starting the game',
         variant: "destructive",
       });
     },
@@ -124,7 +163,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
 
   const handleCreateGame = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gameSettings.courseName) {
+    
+    if (!currentUser?.id) {
+      toast({
+        title: "Authentication error",
+        description: "Please sign in to create a game",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!gameSettings.courseName.trim()) {
       toast({
         title: "Missing information",
         description: "Please enter a course name",
@@ -132,11 +181,22 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
       });
       return;
     }
+    
     createGameMutation.mutate(gameSettings);
   };
 
   const handleJoinGame = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!currentUser?.id) {
+      toast({
+        title: "Authentication error",
+        description: "Please sign in to join a game",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!joinCode || joinCode.length !== 6) {
       toast({
         title: "Invalid game code",
@@ -145,13 +205,24 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
       });
       return;
     }
+    
     joinGameMutation.mutate(joinCode.toUpperCase());
   };
 
   const handleStartGame = () => {
-    if (currentGame && gameData?.players?.length >= 2) {
-      startGameMutation.mutate(currentGame.id);
+    if (!currentGame) return;
+    
+    const players = gameData?.players || [];
+    if (players.length < 2) {
+      toast({
+        title: "Not enough players",
+        description: "Need at least 2 players to start the game",
+        variant: "destructive",
+      });
+      return;
     }
+    
+    startGameMutation.mutate(currentGame.id);
   };
 
   const copyGameCode = () => {
@@ -187,7 +258,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
 
   if (currentGame && activeTab === 'lobby') {
     const players = gameData?.players || [];
-    const isHost = currentGame.hostId === currentUser.id;
+    const isHost = currentGame.hostId === currentUser?.id;
     const canStart = isHost && players.length >= 2;
 
     return (
@@ -258,6 +329,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
                     }
                   </Button>
                 )}
+
+                {/* Join as Host button if host hasn't joined yet */}
+                {isHost && !players.some(p => p.playerId === currentUser?.id) && (
+                  <Button
+                    onClick={() => joinGameMutation.mutate(currentGame.gameCode)}
+                    disabled={joinGameMutation.isPending}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                  >
+                    {joinGameMutation.isPending ? 'Joining...' : 'Join as Host'}
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -271,7 +353,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {players.map((player: any) => (
+                  {players.map((player: PlayerData) => (
                     <div
                       key={player.playerId}
                       className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
@@ -286,7 +368,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
                         {player.playerId === currentGame.hostId && (
                           <Badge variant="outline">Host</Badge>
                         )}
-                        {player.playerId === currentUser.id && (
+                        {player.playerId === currentUser?.id && (
                           <Badge>You</Badge>
                         )}
                       </div>
@@ -369,7 +451,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
                         value={gameSettings.coursePar}
                         onChange={(e) => setGameSettings(prev => ({ 
                           ...prev, 
-                          coursePar: parseInt(e.target.value) 
+                          coursePar: parseInt(e.target.value) || 72
                         }))}
                       />
                     </div>
@@ -384,7 +466,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
                         value={gameSettings.maxPlayers}
                         onChange={(e) => setGameSettings(prev => ({ 
                           ...prev, 
-                          maxPlayers: parseInt(e.target.value) 
+                          maxPlayers: parseInt(e.target.value) || 4
                         }))}
                       />
                     </div>
@@ -393,7 +475,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
                   <Button
                     type="submit"
                     className="w-full bg-green-600 hover:bg-green-700"
-                    disabled={createGameMutation.isPending}
+                    disabled={createGameMutation.isPending || !currentUser?.id}
                   >
                     {createGameMutation.isPending ? 'Creating Game...' : 'Create Game'}
                   </Button>
@@ -429,7 +511,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ onStartGame, onBack, currentUser,
                   <Button
                     type="submit"
                     className="w-full bg-green-600 hover:bg-green-700"
-                    disabled={joinGameMutation.isPending || loadingJoinInfo}
+                    disabled={joinGameMutation.isPending || loadingJoinInfo || !currentUser?.id}
                   >
                     {joinGameMutation.isPending ? 'Joining Game...' : 'Join Game'}
                   </Button>

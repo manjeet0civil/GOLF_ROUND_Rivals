@@ -1,26 +1,42 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Trophy, Users, Play, Plus, History } from 'lucide-react';
-import AuthModal from '@/components/AuthModal';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Users, History, Trophy, Target, Zap, Shield, Globe, Play, LogOut } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { SupabaseAuthModal } from '@/components/SupabaseAuthModal';
 import GameLobby from '@/components/GameLobby';
 import LiveScorecard from '@/components/LiveScorecard';
 import GameHistory from '@/components/GameHistory';
 import { useQuery } from '@tanstack/react-query';
 
-type GameState = 'menu' | 'lobby' | 'playing' | 'finished' | 'history';
+type GameState = 'menu' | 'lobby' | 'playing' | 'history' | 'finished';
+
+interface GameData {
+  id: number;
+  courseName: string;
+  coursePar: number;
+  maxPlayers: number;
+  gameCode: string;
+  status: string;
+  hostId: string;
+  players?: any[];
+}
+
+interface ActiveGameResponse {
+  game: GameData;
+  players: any[];
+}
 
 const Index = () => {
+  const { user, profile, loading, signOut } = useAuth();
   const [gameState, setGameState] = useState<GameState>('menu');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [gameData, setGameData] = useState(null);
+  const [gameData, setGameData] = useState<GameData | null>(null);
   const [currentGameId, setCurrentGameId] = useState<number | null>(null);
 
   // Monitor game status for automatic redirection when host starts game
-  const { data: activeGameData } = useQuery({
+  const { data: activeGameData } = useQuery<ActiveGameResponse>({
     queryKey: [`/api/games/${currentGameId}`],
     enabled: !!currentGameId && gameState === 'lobby',
     refetchInterval: 2000, // Check every 2 seconds
@@ -34,31 +50,30 @@ const Index = () => {
     }
   }, [activeGameData, gameState]);
 
-  const handleAuth = (user: any) => {
-    setIsAuthenticated(true);
-    setCurrentUser(user);
-    setShowAuthModal(false);
-  };
-
   const handleCreateGame = () => {
-    if (!isAuthenticated) {
+    if (!user) {
       setShowAuthModal(true);
       return;
     }
+    // Reset any existing game state
+    setGameData(null);
+    setCurrentGameId(null);
     setGameState('lobby');
   };
 
   const handleJoinGame = () => {
-    if (!isAuthenticated) {
+    if (!user) {
       setShowAuthModal(true);
       return;
     }
-    // Simulate joining a game
+    // Reset any existing game state
+    setGameData(null);
+    setCurrentGameId(null);
     setGameState('lobby');
   };
 
   const handleViewHistory = () => {
-    if (!isAuthenticated) {
+    if (!user) {
       setShowAuthModal(true);
       return;
     }
@@ -75,141 +90,141 @@ const Index = () => {
     setCurrentGameId(gameId);
   };
 
+  const handleEndGame = () => {
+    // Reset game state when game ends
+    setGameData(null);
+    setCurrentGameId(null);
+    setGameState('finished');
+  };
+
+  const handleReturnToMenu = () => {
+    // Complete reset of game state
+    setGameData(null);
+    setCurrentGameId(null);
+    setGameState('menu');
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setGameState('menu');
+  };
+
+  // Show loading state while auth is initializing
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-green-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   const renderGameState = () => {
     switch (gameState) {
       case 'lobby':
-        return <GameLobby onStartGame={handleStartGame} onBack={() => setGameState('menu')} currentUser={currentUser} onGameJoined={handleGameJoined} />;
+        return <GameLobby onStartGame={handleStartGame} onBack={handleReturnToMenu} currentUser={user} onGameJoined={handleGameJoined} />;
       case 'playing':
-        return <LiveScorecard gameData={gameData} onEndGame={() => setGameState('finished')} currentUser={currentUser} />;
+        return <LiveScorecard gameData={gameData} onEndGame={handleEndGame} currentUser={user} />;
       case 'history':
-        return <GameHistory currentUser={currentUser} onBack={() => setGameState('menu')} />;
+        return <GameHistory currentUser={user} onBack={handleReturnToMenu} />;
       case 'finished':
         return (
           <div className="text-center py-12">
             <Trophy className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
             <h2 className="text-3xl font-bold text-green-800 mb-4">Game Complete!</h2>
-            <Button onClick={() => setGameState('menu')} className="bg-green-600 hover:bg-green-700">
+            <p className="text-gray-600 mb-6">Results have been saved to your game history.</p>
+            <Button onClick={handleReturnToMenu} className="bg-green-600 hover:bg-green-700">
               Return to Menu
             </Button>
           </div>
         );
       default:
+        // Main menu
         return (
-          <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100">
-            <div className="container mx-auto px-4 py-12">
-              {/* Header */}
-              <div className="text-center mb-12">
-                <div className="flex items-center justify-center gap-3 mb-4">
-                  <Trophy className="w-12 h-12 text-green-600" />
-                  <h1 className="text-5xl font-bold text-green-800">GolfScore Live</h1>
+          <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center p-4">
+            <div className="max-w-md w-full">
+              <div className="text-center mb-8">
+                <div className="flex items-center justify-center mb-4">
+                  <Target className="w-12 h-12 text-green-600 mr-3" />
+                  <h1 className="text-4xl font-bold text-green-800">Golf Round Rivals</h1>
                 </div>
-                <p className="text-xl text-green-600 max-w-2xl mx-auto">
-                  Experience the thrill of live multiplayer golf scoring. Create games, invite friends, and track every shot in real-time.
-                </p>
+                <p className="text-gray-600">Multiplayer golf scorecard for friendly competition</p>
               </div>
 
-              {/* Main Actions */}
-              <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-8 mb-12">
-                <Card className="hover:shadow-lg transition-shadow duration-300 border-green-200">
-                  <CardHeader className="text-center">
-                    <Plus className="w-12 h-12 text-green-600 mx-auto mb-2" />
-                    <CardTitle className="text-2xl text-green-800">Create New Game</CardTitle>
-                    <CardDescription className="text-green-600">
-                      Host a new round and invite players to join your game
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
-                      onClick={handleCreateGame}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-lg"
-                    >
-                      Create Game
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow duration-300 border-green-200">
-                  <CardHeader className="text-center">
-                    <Users className="w-12 h-12 text-green-600 mx-auto mb-2" />
-                    <CardTitle className="text-2xl text-green-800">Join Game</CardTitle>
-                    <CardDescription className="text-green-600">
-                      Enter a game code to join an existing round
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
-                      onClick={handleJoinGame}
-                      variant="outline" 
-                      className="w-full border-green-600 text-green-600 hover:bg-green-50 py-3 text-lg"
-                    >
-                      Join Game
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-lg transition-shadow duration-300 border-green-200">
-                  <CardHeader className="text-center">
-                    <History className="w-12 h-12 text-green-600 mx-auto mb-2" />
-                    <CardTitle className="text-2xl text-green-800">Game History</CardTitle>
-                    <CardDescription className="text-green-600">
-                      View your past rounds and final leaderboards
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
-                      onClick={handleViewHistory}
-                      variant="outline" 
-                      className="w-full border-green-600 text-green-600 hover:bg-green-50 py-3 text-lg"
-                    >
-                      View History
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Features */}
-              <div className="max-w-6xl mx-auto">
-                <h2 className="text-3xl font-bold text-green-800 text-center mb-8">Features</h2>
-                <div className="grid md:grid-cols-3 gap-6">
-                  <Card className="text-center border-green-200">
-                    <CardContent className="pt-6">
-                      <Play className="w-8 h-8 text-green-600 mx-auto mb-4" />
-                      <h3 className="font-semibold text-green-800 mb-2">Real-Time Scoring</h3>
-                      <p className="text-green-600 text-sm">Live updates as players enter scores hole by hole</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="text-center border-green-200">
-                    <CardContent className="pt-6">
-                      <Trophy className="w-8 h-8 text-green-600 mx-auto mb-4" />
-                      <h3 className="font-semibold text-green-800 mb-2">Auto Calculations</h3>
-                      <p className="text-green-600 text-sm">Automatic OUT, IN, Total, and Net score calculations</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="text-center border-green-200">
-                    <CardContent className="pt-6">
-                      <Users className="w-8 h-8 text-green-600 mx-auto mb-4" />
-                      <h3 className="font-semibold text-green-800 mb-2">Live Leaderboard</h3>
-                      <p className="text-green-600 text-sm">Track rankings and see who's leading in real-time</p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-
-              {/* Auth Status */}
-              <div className="fixed top-4 right-4">
-                {isAuthenticated ? (
-                  <div className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
-                    Welcome back, {currentUser?.name || 'Player'}!
-                  </div>
-                ) : (
+              {!user ? (
+                <div className="space-y-4">
                   <Button 
-                    onClick={() => setShowAuthModal(true)}
-                    variant="outline"
-                    className="border-green-600 text-green-600 hover:bg-green-50"
+                    onClick={() => setShowAuthModal(true)} 
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
                   >
-                    Sign In
+                    <Shield className="w-5 h-5 mr-2" />
+                    Sign In to Play
                   </Button>
-                )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg p-4 mb-6 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-gray-800">{profile?.name || user.email}</p>
+                        <p className="text-sm text-gray-500">Handicap: {profile?.handicap || 0}</p>
+                      </div>
+                      <Button 
+                        onClick={handleSignOut} 
+                        variant="outline" 
+                        size="sm"
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        <LogOut className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleCreateGame} 
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    Create New Game
+                  </Button>
+
+                  <Button 
+                    onClick={handleJoinGame} 
+                    variant="outline" 
+                    className="w-full border-green-600 text-green-600 hover:bg-green-50 py-3"
+                  >
+                    <Users className="w-5 h-5 mr-2" />
+                    Join Game
+                  </Button>
+
+                  <Button 
+                    onClick={handleViewHistory} 
+                    variant="outline" 
+                    className="w-full border-gray-300 text-gray-600 hover:bg-gray-50 py-3"
+                  >
+                    <History className="w-5 h-5 mr-2" />
+                    Game History
+                  </Button>
+                </div>
+              )}
+
+              <div className="mt-8 text-center">
+                <div className="flex justify-center space-x-6 text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Globe className="w-4 h-4 mr-1" />
+                    Real-time
+                  </div>
+                  <div className="flex items-center">
+                    <Zap className="w-4 h-4 mr-1" />
+                    Fast
+                  </div>
+                  <div className="flex items-center">
+                    <Shield className="w-4 h-4 mr-1" />
+                    Secure
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -220,10 +235,9 @@ const Index = () => {
   return (
     <>
       {renderGameState()}
-      <AuthModal 
+      <SupabaseAuthModal 
         isOpen={showAuthModal} 
         onClose={() => setShowAuthModal(false)} 
-        onAuth={handleAuth} 
       />
     </>
   );

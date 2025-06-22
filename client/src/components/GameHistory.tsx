@@ -2,33 +2,128 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Trophy, Calendar, MapPin, Users, Target } from 'lucide-react';
+import { ArrowLeft, Trophy, Calendar, MapPin, Users, Target, Medal } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { supabase } from '@/lib/supabase';
 
 interface GameHistoryProps {
   currentUser: any;
   onBack: () => void;
 }
 
+interface GameHistoryData {
+  history: Array<{
+    id: number;
+    gameId: number;
+    playerId: string;
+    totalStrokes: number;
+    totalPar: number;
+    netScore: number;
+    handicap: number;
+    position: number;
+    isWinner: boolean;
+    createdAt: string;
+    game: {
+      id: number;
+      courseName: string;
+      coursePar: number;
+      maxPlayers: number;
+      gameCode: string;
+      status: string;
+      hostId: string;
+      createdAt: string;
+      completedAt: string | null;
+    };
+  }>;
+  stats: {
+    wins: number;
+    totalGames: number;
+    avgScore: number;
+    bestScore: number;
+  };
+}
+
 const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
-  // Get user's game history
-  const { data: gameHistory, isLoading } = useQuery({
-    queryKey: [`/api/users/${currentUser.id}/games`],
+  // Get user's game history with authentication
+  const { data: gameHistoryData, isLoading, error } = useQuery<GameHistoryData>({
+    queryKey: ['/api/users/games'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No session found');
+      }
+
+      const response = await fetch('/api/users/games', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch game history');
+      }
+
+      return response.json();
+    },
+    enabled: !!currentUser,
   });
 
-  const getGameResult = (game: any) => {
-    // This would be enhanced with actual game results
-    const results = ['1st Place', '2nd Place', '3rd Place', '4th Place'];
-    return results[Math.floor(Math.random() * results.length)];
+  const getGameResult = (gameRecord: any) => {
+    if (gameRecord.game?.status === 'completed') {
+      return gameRecord.isWinner ? 'Winner' : `${gameRecord.position}${getOrdinalSuffix(gameRecord.position)} Place`;
+    } else if (gameRecord.game?.status === 'playing') {
+      return 'In Progress';
+    } else {
+      return 'Waiting';
+    }
   };
 
-  const getScoreSummary = (game: any) => {
-    // Mock score data - in real implementation this would come from the API
-    const score = Math.floor(Math.random() * 20) + 70;
-    const par = game.game?.coursePar || 72;
-    const toPar = score - par;
-    return { score, toPar };
+  const getOrdinalSuffix = (num: number) => {
+    if (num >= 11 && num <= 13) return 'th';
+    switch (num % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  };
+
+  const getScoreSummary = (gameRecord: any) => {
+    if (!gameRecord.game || gameRecord.game.status !== 'completed') {
+      return { score: null, toPar: null };
+    }
+    
+    return { 
+      score: gameRecord.totalStrokes, 
+      toPar: gameRecord.totalStrokes - gameRecord.totalPar 
+    };
+  };
+
+  const getMedalIcon = (position: number) => {
+    switch (position) {
+      case 1: return '🥇';
+      case 2: return '🥈';
+      case 3: return '🥉';
+      default: return null;
+    }
+  };
+
+  // Use real stats from API
+  const stats = gameHistoryData?.stats || {
+    wins: 0,
+    avgScore: 0,
+    totalGames: 0,
+    bestScore: 0
+  };
+
+  // Format stats for display
+  const formatStat = (value: number, isScore: boolean = false) => {
+    if (value === 0 && stats.totalGames === 0) {
+      return isScore ? 'N/A' : '0';
+    }
+    return isScore ? value.toFixed(1) : value.toString();
   };
 
   if (isLoading) {
@@ -44,6 +139,30 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Loading game history...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-4 mb-6">
+            <Button variant="outline" onClick={onBack} className="flex items-center gap-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back to Menu
+            </Button>
+          </div>
+          <div className="text-center py-12">
+            <div className="text-red-600 mb-4">
+              <p className="text-lg font-semibold">Error loading game history</p>
+              <p className="text-sm">{error.message}</p>
+            </div>
+            <Button onClick={onBack} className="bg-green-600 hover:bg-green-700">
+              Back to Menu
+            </Button>
           </div>
         </div>
       </div>
@@ -66,7 +185,7 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
             </div>
           </div>
           <Badge variant="secondary" className="text-lg px-4 py-2">
-            {gameHistory?.length || 0} Games Played
+            {stats.totalGames} Games Played
           </Badge>
         </div>
 
@@ -77,7 +196,7 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
               <div className="flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-600" />
                 <div>
-                  <p className="text-2xl font-bold">3</p>
+                  <p className="text-2xl font-bold">{stats.wins}</p>
                   <p className="text-sm text-gray-600">Wins</p>
                 </div>
               </div>
@@ -88,8 +207,8 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
               <div className="flex items-center gap-2">
                 <Target className="w-5 h-5 text-green-600" />
                 <div>
-                  <p className="text-2xl font-bold">74.2</p>
-                  <p className="text-sm text-gray-600">Avg Score</p>
+                  <p className="text-2xl font-bold">{formatStat(stats.avgScore, true)}</p>
+                  <p className="text-sm text-gray-600">Avg Net Score</p>
                 </div>
               </div>
             </CardContent>
@@ -99,7 +218,7 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-600" />
                 <div>
-                  <p className="text-2xl font-bold">{gameHistory?.length || 0}</p>
+                  <p className="text-2xl font-bold">{stats.totalGames}</p>
                   <p className="text-sm text-gray-600">Games</p>
                 </div>
               </div>
@@ -108,10 +227,10 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-purple-600" />
+                <Medal className="w-5 h-5 text-purple-600" />
                 <div>
-                  <p className="text-2xl font-bold">18</p>
-                  <p className="text-sm text-gray-600">Best Score</p>
+                  <p className="text-2xl font-bold">{formatStat(stats.bestScore, true)}</p>
+                  <p className="text-sm text-gray-600">Best Net Score</p>
                 </div>
               </div>
             </CardContent>
@@ -120,11 +239,12 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
 
         {/* Game History List */}
         <div className="space-y-4">
-          {gameHistory && gameHistory.length > 0 ? (
-            gameHistory.map((gameRecord: any) => {
+          {gameHistoryData && gameHistoryData.history.length > 0 ? (
+            gameHistoryData.history.map((gameRecord) => {
               const game = gameRecord.game;
               const isHost = game.hostId === currentUser.id;
               const scoreSummary = getScoreSummary(gameRecord);
+              const medalIcon = getMedalIcon(gameRecord.position);
               
               return (
                 <Card key={gameRecord.id} className="hover:shadow-md transition-shadow">
@@ -152,22 +272,33 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
                       <div className="text-right">
                         <div className="flex items-center gap-4">
                           <div>
-                            <p className="text-2xl font-bold text-green-800">
-                              {scoreSummary.score}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {scoreSummary.toPar > 0 ? `+${scoreSummary.toPar}` : scoreSummary.toPar}
-                            </p>
+                            {scoreSummary.score !== null ? (
+                              <>
+                                <p className="text-2xl font-bold text-green-800">
+                                  {scoreSummary.score}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {scoreSummary.toPar !== null && scoreSummary.toPar > 0 ? `+${scoreSummary.toPar}` : scoreSummary.toPar}
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-2xl font-bold text-gray-400">--</p>
+                                <p className="text-sm text-gray-400">No score</p>
+                              </>
+                            )}
                           </div>
                           <div className="text-right">
-                            <Badge 
-                              variant={getGameResult(gameRecord).includes('1st') ? "default" : "outline"}
-                              className="mb-2"
-                            >
-                              {getGameResult(gameRecord)}
-                            </Badge>
+                            <div className="flex items-center gap-2 mb-2">
+                              {medalIcon && <span className="text-2xl">{medalIcon}</span>}
+                              <Badge 
+                                variant={game.status === 'completed' ? "default" : "outline"}
+                              >
+                                {getGameResult(gameRecord)}
+                              </Badge>
+                            </div>
                             <p className="text-sm text-gray-600">
-                              {game.status === 'completed' ? 'Completed' : 'In Progress'}
+                              Net: {gameRecord.netScore} (Hcp: {gameRecord.handicap})
                             </p>
                           </div>
                         </div>
@@ -193,7 +324,7 @@ const GameHistory: React.FC<GameHistoryProps> = ({ currentUser, onBack }) => {
           )}
         </div>
 
-        {gameHistory && gameHistory.length > 0 && (
+        {gameHistoryData && gameHistoryData.history.length > 0 && (
           <div className="mt-8 text-center">
             <p className="text-gray-600">
               Keep playing to improve your handicap and climb the leaderboards!

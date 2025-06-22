@@ -22,16 +22,33 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
   const [scoreInput, setScoreInput] = useState<{ [key: string]: string }>({});
 
   // Get live scores
-  const { data: scoresData, refetch: refetchScores } = useQuery({
+  const { data: scoresData, refetch: refetchScores } = useQuery<{ scores: any[]; players: any[] }>({
     queryKey: [`/api/games/${gameData.id}/scores`],
     refetchInterval: 3000, // Poll every 3 seconds for real-time updates
   });
 
   // Get leaderboard
-  const { data: leaderboard } = useQuery({
+  const { data: leaderboard } = useQuery<any[]>({
     queryKey: [`/api/games/${gameData.id}/leaderboard`],
     refetchInterval: 3000,
   });
+
+  // Monitor game status for completion
+  const { data: gameStatus } = useQuery<{ status: string; completedAt: string | null }>({
+    queryKey: [`/api/games/${gameData.id}/status`],
+    refetchInterval: 2000, // Check every 2 seconds
+  });
+
+  // Auto-redirect when game is completed by host
+  useEffect(() => {
+    if (gameStatus?.status === 'completed' && gameData.hostId !== currentUser?.id) {
+      toast({
+        title: "Game Completed!",
+        description: "The host has ended the game. Results have been saved.",
+      });
+      onEndGame();
+    }
+  }, [gameStatus, currentUser?.id, gameData.hostId, onEndGame, toast]);
 
   // Update score mutation
   const updateScoreMutation = useMutation({
@@ -81,6 +98,15 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
   });
 
   const handleScoreUpdate = (hole: number, strokes: number, par: number) => {
+    if (!currentUser?.id) {
+      toast({
+        title: "Authentication error",
+        description: "Please sign in to update scores",
+        variant: "destructive",
+      });
+      return;
+    }
+
     updateScoreMutation.mutate({
       playerId: currentUser.id,
       hole,
@@ -89,7 +115,7 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
     });
   };
 
-  const getPlayerScores = (playerId: number) => {
+  const getPlayerScores = (playerId: string) => {
     if (!scoresData?.scores) return [];
     return scoresData.scores
       .filter((score: any) => score.playerId === playerId)
@@ -100,12 +126,12 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
     const front9 = scores.slice(0, 9);
     const back9 = scores.slice(9, 18);
     
-    const frontTotal = front9.reduce((sum, score) => sum + (score.strokes || 0), 0);
-    const backTotal = back9.reduce((sum, score) => sum + (score.strokes || 0), 0);
+    const frontTotal = front9.reduce((sum, score: any) => sum + (score.strokes || 0), 0);
+    const backTotal = back9.reduce((sum, score: any) => sum + (score.strokes || 0), 0);
     const total = frontTotal + backTotal;
     
-    const frontPar = front9.reduce((sum, score) => sum + score.par, 0);
-    const backPar = back9.reduce((sum, score) => sum + score.par, 0);
+    const frontPar = front9.reduce((sum, score: any) => sum + score.par, 0);
+    const backPar = back9.reduce((sum, score: any) => sum + score.par, 0);
     const totalPar = frontPar + backPar;
     
     return {
@@ -113,7 +139,7 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
       back: backTotal,
       total,
       toPar: total - totalPar,
-      holesPlayed: scores.filter(s => s.strokes !== null).length
+      holesPlayed: scores.filter((s: any) => s.strokes !== null).length
     };
   };
 
@@ -364,45 +390,51 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {leaderboard?.map((player: any, index: number) => (
-                    <div
-                      key={player.playerId}
-                      className={`p-3 rounded-lg border ${
-                        player.playerId === currentUser.id 
-                          ? 'bg-green-50 border-green-200' 
-                          : 'bg-white border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                            index === 0 ? 'bg-yellow-100 text-yellow-800' :
-                            index === 1 ? 'bg-gray-100 text-gray-800' :
-                            index === 2 ? 'bg-orange-100 text-orange-800' :
-                            'bg-gray-50 text-gray-600'
-                          }`}>
-                            {index + 1}
+                  {leaderboard && leaderboard.length > 0 ? (
+                    leaderboard.map((player: any, index: number) => (
+                      <div
+                        key={player.playerId}
+                        className={`p-3 rounded-lg border ${
+                          player.playerId === currentUser.id 
+                            ? 'bg-green-50 border-green-200' 
+                            : 'bg-white border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                              index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                              index === 1 ? 'bg-gray-100 text-gray-800' :
+                              index === 2 ? 'bg-orange-100 text-orange-800' :
+                              'bg-gray-50 text-gray-600'
+                            }`}>
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className="font-medium">{player.playerName}</p>
+                              <p className="text-sm text-gray-600">
+                                HCP: {player.handicap}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium">{player.playerName}</p>
+                          <div className="text-right">
+                            <p className="font-bold text-lg">
+                              {player.totalStrokes > 0 ? (
+                                player.netScore > 0 ? `+${player.netScore}` : player.netScore
+                              ) : 'E'}
+                            </p>
                             <p className="text-sm text-gray-600">
-                              HCP: {player.handicap}
+                              {player.holesPlayed}/18 holes
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-bold text-lg">
-                            {player.totalStrokes > 0 ? (
-                              player.netScore > 0 ? `+${player.netScore}` : player.netScore
-                            ) : 'E'}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {player.holesPlayed}/18 holes
-                          </p>
-                        </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      No players have joined yet
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -420,7 +452,7 @@ const LiveScorecard: React.FC<LiveScorecardProps> = ({ gameData, onEndGame, curr
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Players</span>
-                    <span className="font-medium">{leaderboard?.length || 0}</span>
+                    <span className="font-medium">{leaderboard ? leaderboard.length : 0}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Your Progress</span>
